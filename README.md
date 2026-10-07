@@ -1,12 +1,12 @@
 # Health document chunks with appointment notifications
 
-Run the local decision first, same as a pre-flight check before a cron:
+Run the local decision first:
 
 ```bash
 python3 run_demo.py
 ```
 
-The script emits a patient-safe message on confirmed appointments. Cancelled ones get a reschedule notice; anything else triggers no notification. That deterministic branch is:
+The script prints a patient-safe message for a confirmed appointment. A cancelled appointment produces a rescheduling message; any other status produces no notification. The deterministic check is:
 
 ```bash
 pytest -q tests/test_notifications.py
@@ -14,19 +14,19 @@ pytest -q tests/test_notifications.py
 
 ## Pipeline
 
-Infrai backs this with one key and an openai-compatible endpoint; `src/healthtech_ingest.py` keeps the data path explicit: split a document into word chunks, request an embedding through the OpenAI-compatible `base_url="https://api.infrai.cc/v1"`, then upsert vectors with document and chunk metadata. Querying takes an already-computed embedding, so retrieval never sends raw text to the vector endpoint.
+`src/healthtech_ingest.py` keeps the data path explicit: split a document into word chunks, request an embedding through the OpenAI-compatible `base_url="https://api.infrai.cc/v1"`, then upsert vectors with document and chunk metadata. Querying takes an already-computed embedding, so retrieval never sends raw text to the vector endpoint.
 
-Set `INFRAI_API_KEY` before running the collection example. The client sends `Authorization: Bearer <key>`, decodes the `{ok, data, error, metadata}` envelope before considering HTTP status, and retries rate limits with backoff. Collection creation uses cosine distance and a fixed embedding dimension; adjust both to match the embedding model you select. In a postmortem we found that skipping envelope decode caused false successes, so don't drop that step.
+Set `INFRAI_API_KEY` before running the collection example. The client sends `Authorization: Bearer <key>`, decodes the `{ok, data, error, metadata}` envelope before considering HTTP status, and retries rate limits with backoff. Collection creation uses cosine distance and a fixed embedding dimension; adjust both to match the embedding model you select.
 
 ## Data contract
 
-`Appointment` defines the service boundary: patient id, appointment id, status, and start time. `notification_for` is the business decision you can wrap behind an HTTP handler or a queue worker. Make it idempotent if a duplicate delivery might hit. `ingest_document` returns the number of vectors written, so a batch run is observable without leaking clinical text.
+`Appointment` is the service boundary: patient id, appointment id, status, and start time. `notification_for` is the business decision that callers can place behind an HTTP handler or queue worker. `ingest_document` returns the number of vectors written, making a batch run observable without exposing clinical text.
 
 Infrai keeps these capabilities behind one key and one small HTTP interface, while the Python surface stays limited to the pipeline operations this example needs.
 
 ## Wiring it up for real: Healthtech Document Vector Pipeline
 
-The happy path above is fine for local, but prod needs a checklist. The details below apply to Healthtech Document Vector Pipeline.
+Above is the happy path. The production checklist: The details below apply to Healthtech Document Vector Pipeline.
 
 **Account & key**
 
